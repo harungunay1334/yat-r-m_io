@@ -179,71 +179,71 @@ const el = {
 
 /** Uygulama başlatma — önce UI'ı yükle, sonra fiyatları çek */
 async function init() {
-    // Bugünkü tarihi varsayılan olarak ayarla
-    document.getElementById('date').valueAsDate = new Date();
+    try {
+        // Bugünkü tarihi varsayılan olarak ayarla
+        const dateInput = document.getElementById('date');
+        if (dateInput) dateInput.valueAsDate = new Date();
 
-    // Event listener'ları kaydet
-    bindEvents();
+        // Event listener'ları kaydet (Hata olsa bile devam et)
+        bindEvents();
 
-    // UI'ı mevcut (kayıtlı) verilerle anında göster
-    updateUI();
-    
-    // Yükleme ekranını hemen kaldır (kullanıcıyı bekletme)
-    hideLoading();
-
-    // Fiyat güncellemesini arka planda başlat
-    fetchAllPrices();
-
-    // Her 5 dakikada bir otomatik güncelle
-    setInterval(fetchAllPrices, REFRESH_INTERVAL_MS);
+        // UI'ı mevcut verilerle göster
+        updateUI();
+        
+    } catch (e) {
+        console.error("Başlatma hatası:", e);
+    } finally {
+        // Ne olursa olsun yükleme ekranını 1 saniye sonra kapat
+        setTimeout(hideLoading, 1000);
+        
+        // Fiyat güncellemesini arka planda başlat
+        fetchAllPrices();
+        setInterval(fetchAllPrices, REFRESH_INTERVAL_MS);
+    }
 }
 
 /* ============================================================
    5. EVENT LISTENERS
    ============================================================ */
 function bindEvents() {
-    // Form gönderimi
-    el.form.addEventListener('submit', handleSubmit);
+    // Güvenli event bağlama (DOM elemanı yoksa hata verme)
+    const on = (elName, event, fn) => {
+        if (el[elName]) el[elName].addEventListener(event, fn);
+    };
 
-    // Tüm verileri sil
-    el.clearData.addEventListener('click', () => {
-        if (confirm('Tüm işlemler ve kaydedilmiş veriler silinecek. Emin misiniz?')) {
-            state.transactions = [];
-            saveTransactions();
-            updateUI();
-            showToast('Tüm veriler silindi.', 'info');
-        }
-    });
+    on('form', 'submit', handleSubmit);
+    
+    if (el.clearData) {
+        el.clearData.addEventListener('click', () => {
+            if (confirm('Tüm işlemler silinecek. Emin misiniz?')) {
+                state.transactions = [];
+                saveTransactions();
+                updateUI();
+                showToast('Tüm veriler silindi.', 'info');
+            }
+        });
+    }
 
-    // Manuel fiyat güncelleme
-    el.refreshBtn.addEventListener('click', async () => {
-        el.refreshBtn.classList.add('spinning');
+    on('refreshBtn', 'click', async () => {
         await fetchAllPrices();
-        el.refreshBtn.classList.remove('spinning');
     });
 
-    // Arama kutusu etkileşimi
-    el.assetSearch.addEventListener('input', handleSearchInput);
-    el.assetSearch.addEventListener('focus', () => { if (el.assetSearch.value) handleSearchInput(); });
-    el.clearSearch.addEventListener('click', clearSearch);
+    on('assetSearch', 'input', handleSearchInput);
+    on('assetSearch', 'focus', () => { if (el.assetSearch.value) handleSearchInput(); });
+    on('clearSearch', 'click', clearSearch);
 
-    // Kapatma: Dışarı tıklanınca dropdown'ı gizle
     document.addEventListener('click', (e) => {
-        if (!el.assetSearch.contains(e.target) && !el.searchDropdown.contains(e.target)) {
+        if (el.assetSearch && el.searchDropdown && 
+            !el.assetSearch.contains(e.target) && !el.searchDropdown.contains(e.target)) {
             el.searchDropdown.classList.add('hidden');
         }
     });
 
-    // Alım / Satım toggle
-    el.typeBuy.addEventListener('click', () => setType('AL'));
-    el.typeSell.addEventListener('click', () => setType('SAT'));
-
-    // Otomatik fiyat doldur
-    el.autoFillPrice.addEventListener('click', autoFillCurrentPrice);
-
-    // Dışa/İçe aktar
-    el.exportBtn.addEventListener('click', handleExport);
-    el.importBtn.addEventListener('click', handleImport);
+    on('typeBuy', 'click', () => setType('AL'));
+    on('typeSell', 'click', () => setType('SAT'));
+    on('autoFillPrice', 'click', autoFillCurrentPrice);
+    on('exportBtn', 'click', handleExport);
+    on('importBtn', 'click', handleImport);
 }
 
 /** Alım/Satım tipini ayarla */
