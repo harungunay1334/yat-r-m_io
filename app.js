@@ -497,20 +497,18 @@ async function fetchAllPrices() {
             return;
         }
 
-        // Dolar kuru gerekliliği kontrolü
+        // ÖNCE DOLAR (Kur bilgisi lazımsa)
         const hasGlobal = [...tickers].some(t => {
             const conf = ASSET_CONFIG[t];
             return conf && !conf.isTRY;
         });
-        if (hasGlobal) tickers.add('USD-TRY');
-
-        // Fiyatları çek
-        for (const ticker of tickers) {
-            try {
-                await fetchPriceForTicker(ticker);
-                updateUI();
-            } catch (e) { console.log(ticker + " atlandı."); }
+        if (hasGlobal || tickers.has('USD-TRY')) {
+            await fetchPriceForTicker('USD-TRY');
         }
+
+        // KALAN HER ŞEYİ AYNI ANDA ÇEK (PARALEL)
+        const otherTickers = [...tickers].filter(t => t !== 'USD-TRY');
+        await Promise.allSettled(otherTickers.map(t => fetchPriceForTicker(t)));
 
     } catch (err) {
         console.error("Hata:", err);
@@ -531,19 +529,34 @@ async function fetchPriceForTicker(ticker) {
     const yahooTick = config ? config.yahooTicker : ticker;
     const baseUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${yahooTick}`;
     
-    // Basit ve güvenli çekme metodu (Önce AllOrigins, sonra Codetabs)
+    // 2.5 saniyelik agresif zaman aşımı (AbortController artik her yerde var)
+    const fetchWithTimeout = async (url) => {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), 2500);
+        try {
+            const res = await fetch(url, { signal: controller.signal });
+            clearTimeout(id);
+            return res;
+        } catch (e) {
+            clearTimeout(id);
+            throw e;
+        }
+    };
+
+    // Proxy 1: AllOrigins
     try {
         const url = `https://api.allorigins.win/get?url=${encodeURIComponent(baseUrl)}&_=${Date.now()}`;
-        const resp = await fetch(url);
+        const resp = await fetchWithTimeout(url);
         const data = await resp.json();
         const json = JSON.parse(data.contents);
         const quote = json?.quoteResponse?.result?.[0];
         if (quote) return processQuote(ticker, quote);
     } catch (e) {}
 
+    // Proxy 2: Codetabs
     try {
         const url = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(baseUrl)}`;
-        const resp = await fetch(url);
+        const resp = await fetchWithTimeout(url);
         const json = await resp.json();
         const quote = json?.quoteResponse?.result?.[0];
         if (quote) return processQuote(ticker, quote);
